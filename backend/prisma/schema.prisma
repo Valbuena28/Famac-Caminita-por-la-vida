@@ -1,0 +1,346 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  DOCTOR
+  RECEPTIONIST
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model User {
+  id               String            @id @default(uuid())
+  email            String            @unique
+  passwordHash     String
+  firstName        String
+  lastName         String
+  role             Role              @default(RECEPTIONIST)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  appointments     Appointment[]     @relation("DoctorAppointments")
+}
+
+model Patient {
+  id               String            @id @default(uuid())
+  fileNumber       String?           @unique
+  firstName        String
+  lastName         String
+  ci               String            @unique
+  dateOfBirth      DateTime
+  age              Int?
+  gender           Gender
+  civilStatus      String?
+  birthPlace       String?
+  occupation       String?
+  address          String?
+  municipality     String?
+  state            String?
+  phoneNumber      String?
+  email            String?           @unique
+  emergencyContact String?
+  familyHistory    String?           @db.Text
+
+  isDeceased       Boolean           @default(false)
+  deceasedRecord   DeceasedRecord?
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  appointments     Appointment[]
+  medicalRecords   MedicalRecord[]
+  familyBackground FamilyBackground[]
+  familyMembers    FamilyMember[]
+  socialReport     SocialReport?
+  fundAllocations  FundAllocation[]   // 🆕 Trazabilidad: fondos de caminata asignados a este paciente
+}
+
+model DeceasedRecord {
+  id               String            @id @default(uuid())
+  dateOfDeath      DateTime
+  causeOfDeath     String?
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  patientId        String            @unique
+  patient          Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model Appointment {
+  id               String            @id @default(uuid())
+  date             DateTime
+  status           AppointmentStatus @default(PENDING)
+  reason           String?
+  notes            String?
+  manualPatientName String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  patientId        String?
+  patient          Patient?          @relation(fields: [patientId], references: [id])
+  doctorId         String?
+  doctor           User?             @relation("DoctorAppointments", fields: [doctorId], references: [id])
+}
+
+model MedicalRecord {
+  id                  String            @id @default(uuid())
+  diagnosis           String
+  treatingDoctor      String?
+  surgeryDate         DateTime?
+  surgeryType         String?
+  indicatedTreatment  String?
+  observations        String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  patientId           String
+  patient             Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  chemotherapies      Chemotherapy[]
+}
+
+model Chemotherapy {
+  id                  String            @id @default(uuid())
+  quantity            Int
+  startDate           DateTime
+  endDate             DateTime?
+  status              String            // "En proceso", "Finalizada"
+  suppliedBy          String?
+  applicationPlace    String?
+  requestDetails      String?
+  
+  medicalRecordId     String
+  medicalRecord       MedicalRecord     @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+}
+
+model FamilyBackground {
+  id                  String            @id @default(uuid())
+  date                DateTime
+  description         String
+  amountBs            Float?
+  
+  patientId           String
+  patient             Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model FamilyMember {
+  id                  String            @id @default(uuid())
+  fullName            String
+  relationship        String
+  age                 Int
+  ci                  String?
+  occupation          String?
+  works               Boolean           @default(false)
+  livesWithPatient    Boolean           @default(true)
+  
+  patientId           String
+  patient             Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model SocialReport {
+  id                  String            @id @default(uuid())
+  housingType         String            // Casa, Apto, Habitacion
+  housingCondition    String            // Propia, alquilada, al cuido, compartida
+  socioEconomicAspect String?           @db.Text
+  
+  patientId           String            @unique
+  patient             Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model SystemConfig {
+  id               Int      @id @default(1)
+  foundationName   String
+  director         String
+  address          String   @db.Text
+  phone            String
+  email            String
+  updatedAt        DateTime @updatedAt
+}
+
+model AuditLog {
+  id               String   @id @default(uuid())
+  action           String
+  user             String   // Nombre del usuario responsable
+  target           String   // Recurso o paciente afectado
+  severity         String   // 'info' | 'success' | 'warning' | 'critical'
+  createdAt        DateTime @default(now())
+}
+
+// ============================================================
+// 🚶 MÓDULO CAMINATA FAMAC — Agregado 2026-04-22
+// ============================================================
+
+enum WalkEventStatus {
+  PLANNING
+  ACTIVE
+  FINISHED
+}
+
+enum SponsorTier {
+  DIAMOND
+  PLATINUM
+  GOLD
+  SILVER
+}
+
+enum ProductType {
+  SHIRT
+  CAP
+  NUMBER
+  OTHER
+}
+
+model WalkEvent {
+  id          String          @id @default(uuid())
+  name        String          // "Caminata Rosa 2026"
+  year        Int             @unique
+  goalAmount  Decimal         // Meta de recaudación en Bs
+  status      WalkEventStatus @default(PLANNING)
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  items       InventoryItem[]
+  sponsors    Sponsor[]
+  sales       Sale[]
+  expenses    WalkExpense[]
+  allocations FundAllocation[]
+}
+
+model PointOfSale {
+  id           String   @id @default(uuid())
+  name         String   // "C.C. Sambil Maracaibo"
+  location     String   // Dirección o zona
+  contactName  String?  // Responsable del punto
+  contactPhone String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  stock        Stock[]
+  sales        Sale[]
+}
+
+model InventoryItem {
+  id          String      @id @default(uuid())
+  name        String      // "Camisa Rosa Talla M"
+  type        ProductType
+  size        String?     // Talla si aplica (S, M, L, XL)
+  unitPrice   Decimal     // Precio unitario en Bs
+  totalQty    Int         // Cantidad total producida/comprada
+  createdAt   DateTime    @default(now())
+
+  walkEventId String
+  walkEvent   WalkEvent   @relation(fields: [walkEventId], references: [id], onDelete: Cascade)
+
+  stock       Stock[]
+  saleItems   SaleItem[]
+}
+
+model Stock {
+  id              String        @id @default(uuid())
+  assignedQty     Int           // Cantidad asignada al punto
+  soldQty         Int           @default(0) // Cantidad vendida (se actualiza con cada Sale)
+  assignedAt      DateTime      @default(now())
+
+  pointOfSaleId   String
+  pointOfSale     PointOfSale   @relation(fields: [pointOfSaleId], references: [id], onDelete: Cascade)
+
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@unique([pointOfSaleId, inventoryItemId]) // Un item solo tiene un registro de stock por punto
+}
+
+model Sale {
+  id              String      @id @default(uuid())
+  customerName    String
+  customerCi      String?     // Cédula del comprador
+  customerEmail   String?
+  customerPhone   String?
+  total           Decimal     // Total de la venta en Bs
+  createdAt       DateTime    @default(now())
+
+  pointOfSaleId   String
+  pointOfSale     PointOfSale @relation(fields: [pointOfSaleId], references: [id])
+
+  walkEventId     String
+  walkEvent       WalkEvent   @relation(fields: [walkEventId], references: [id])
+
+  items           SaleItem[]
+}
+
+model SaleItem {
+  id              String        @id @default(uuid())
+  quantity        Int
+  unitPrice       Decimal
+  subtotal        Decimal       // quantity * unitPrice
+
+  saleId          String
+  sale            Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+}
+
+model Sponsor {
+  id          String      @id @default(uuid())
+  companyName String
+  contactName String?
+  email       String?
+  phone       String?
+  tier        SponsorTier // DIAMOND, PLATINUM, GOLD, SILVER
+  amountBs    Decimal?    // Monto del patrocinio en Bs
+  logoUrl     String?     // URL del logo para exposición de marca
+  benefits    String?     @db.Text // Beneficios acordados
+  createdAt   DateTime    @default(now())
+
+  walkEventId String
+  walkEvent   WalkEvent   @relation(fields: [walkEventId], references: [id], onDelete: Cascade)
+}
+
+model WalkExpense {
+  id          String    @id @default(uuid())
+  concept     String    // "Logística", "Tarima", "Hidratación", "Publicidad"
+  amount      Decimal   // Monto del gasto en Bs
+  date        DateTime
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  walkEventId String
+  walkEvent   WalkEvent @relation(fields: [walkEventId], references: [id], onDelete: Cascade)
+}
+
+model FundAllocation {
+  id          String    @id @default(uuid())
+  concept     String    // "Mamografías", "Quimioterapias", "Consultas"
+  amount      Decimal   // Monto destinado en Bs
+  quantity    Int?      // Ej: 500 mamografías costeadas
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  walkEventId String
+  walkEvent   WalkEvent @relation(fields: [walkEventId], references: [id], onDelete: Cascade)
+
+  patientId   String?   // Opcional: vincular a un paciente específico
+  patient     Patient?  @relation(fields: [patientId], references: [id])
+}
