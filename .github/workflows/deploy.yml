@@ -1,0 +1,46 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Continuous Deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: executing remote ssh commands using ssh key
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            echo "🚀 Starting Deployment..."
+            cd /root/SGP-FAMAC
+            
+            echo "📥 Pulling latest changes from main..."
+            git pull origin main
+            
+            echo "📦 Setting up Backend..."
+            cd backend
+            npm install
+            npx prisma generate
+            npm run build
+            # Intentar reiniciar, si no existe, iniciar
+            pm2 restart famac-backend || pm2 start dist/src/main.js --name famac-backend
+            
+            echo "💻 Setting up Frontend..."
+            cd ../frontend
+            # Usamos legacy-peer-deps por seguridad segun documentacion
+            npm install --legacy-peer-deps
+            npm run build
+            # Intentar reiniciar, si no existe, iniciar
+            pm2 restart famac-frontend || PORT=3000 pm2 start npm --name famac-frontend -- run start
+            
+            echo "💾 Saving PM2 state..."
+            pm2 save
+            
+            echo "✅ Deployment Successful!"
